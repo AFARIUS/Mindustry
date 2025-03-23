@@ -3,6 +3,7 @@ package mindustry.net;
 import arc.*;
 import arc.util.*;
 import arc.util.io.*;
+import mindustry.*;
 import mindustry.core.*;
 import mindustry.ctype.*;
 import mindustry.game.*;
@@ -30,7 +31,7 @@ public class NetworkIO{
                 for(ContentType type : ContentType.all){
                     for(Content c : content.getBy(type)){
                         if(c instanceof UnlockableContent u && u.unlocked() && u.techNode != null){
-                            state.rules.researched.add(u.name);
+                            state.rules.researched.add(u);
                         }
                     }
                 }
@@ -116,6 +117,7 @@ public class NetworkIO{
         if(state.rules.modeName != null){
             writeString(buffer, state.rules.modeName, 50);
         }
+        buffer.putInt(Core.settings.getInt("port", port));
         return buffer;
     }
 
@@ -130,8 +132,10 @@ public class NetworkIO{
         int limit = buffer.getInt();
         String description = readString(buffer);
         String modeName = readString(buffer);
+        int hostPort = buffer.getInt();
+        hostPort = hostPort != 0 ? hostPort : Vars.port;
 
-        return new Host(ping, host, hostAddress, map, wave, players, version, vertype, gamemode, limit, description, modeName.isEmpty() ? null : modeName);
+        return new Host(ping, host, hostAddress, hostPort, map, wave, players, version, vertype, gamemode, limit, description, modeName.isEmpty() ? null : modeName);
     }
 
     private static void writeString(ByteBuffer buffer, String string, int maxlen){

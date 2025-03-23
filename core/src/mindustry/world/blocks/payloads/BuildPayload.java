@@ -52,13 +52,19 @@ public class BuildPayload implements Payload{
     }
 
     @Override
+    public void destroyed(){
+        build.dead = true;
+        build.onDestroyed();
+    }
+
+    @Override
     public ItemStack[] requirements(){
         return build.block.requirements;
     }
 
     @Override
     public float buildTime(){
-        return build.block.buildCost;
+        return build.block.buildTime;
     }
 
     @Override
@@ -74,6 +80,11 @@ public class BuildPayload implements Payload{
     @Override
     public float size(){
         return build.block.size * tilesize;
+    }
+
+    @Override
+    public void remove(){
+        build.stopSound();
     }
 
     @Override

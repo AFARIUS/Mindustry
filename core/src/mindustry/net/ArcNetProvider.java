@@ -42,7 +42,12 @@ public class ArcNetProvider implements NetProvider{
     public ArcNetProvider(){
         ArcNet.errorHandler = e -> {
             if(Log.level == LogLevel.debug){
-                Log.debug(Strings.getStackTrace(e));
+                var finalCause = Strings.getFinalCause(e);
+
+                //"connection is closed" is a pointless annoying error that should not be logged
+                if(!"Connection is closed.".equals(finalCause.getMessage())){
+                    Log.debug(Strings.getStackTrace(e));
+                }
             }
         };
 
@@ -94,7 +99,9 @@ public class ArcNetProvider implements NetProvider{
         server.setMulticast(multicastGroup, multicastPort);
         server.setDiscoveryHandler((address, handler) -> {
             ByteBuffer buffer = NetworkIO.writeServerData();
+            int length = buffer.position();
             buffer.position(0);
+            buffer.limit(length);
             handler.respond(buffer);
         });
 
@@ -137,7 +144,7 @@ public class ArcNetProvider implements NetProvider{
 
             @Override
             public void received(Connection connection, Object object){
-                if(!(connection.getArbitraryData() instanceof ArcConnection k) || !(object instanceof Packet pack)) return;
+                if(!(connection.getArbitraryData() instanceof ArcConnection k)) return;
 
                 if(packetSpamLimit > 0 && !k.packetRate.allow(3000, packetSpamLimit)){
                     Log.warn("Blacklisting IP '@' as potential DOS attack - packet spam.", k.address);
@@ -145,6 +152,8 @@ public class ArcNetProvider implements NetProvider{
                     netServer.admins.blacklistDos(k.address);
                     return;
                 }
+
+                if(!(object instanceof Packet pack)) return;
 
                 Core.app.post(() -> {
                     try{
@@ -359,10 +368,12 @@ public class ArcNetProvider implements NetProvider{
         @Override
         public void send(Object object, boolean reliable){
             try{
-                if(reliable){
-                    connection.sendTCP(object);
-                }else{
-                    connection.sendUDP(object);
+                if(connection.isConnected()){
+                    if(reliable){
+                        connection.sendTCP(object);
+                    }else{
+                        connection.sendUDP(object);
+                    }
                 }
             }catch(Exception e){
                 Log.err(e);
@@ -452,7 +463,7 @@ public class ArcNetProvider implements NetProvider{
                 byteBuffer.put((byte)-2); //code for framework message
                 writeFramework(byteBuffer, msg);
             }else{
-                if(!(o instanceof Packet pack)) throw new RuntimeException("All sent objects must implement be Packets! Class: " + o.getClass());
+                if(!(o instanceof Packet pack)) throw new RuntimeException("All sent objects must extend Packet! Class: " + o.getClass());
                 byte id = Net.getPacketId(pack);
                 byteBuffer.put(id);
 
