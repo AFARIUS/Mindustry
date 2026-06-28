@@ -6,7 +6,6 @@ import arc.graphics.*;
 import arc.scene.style.*;
 import arc.scene.ui.*;
 import arc.scene.ui.layout.*;
-import arc.struct.*;
 import arc.util.*;
 import mindustry.*;
 import mindustry.annotations.Annotations.*;
@@ -69,7 +68,7 @@ public class LStatements{
 
             table.add(" = ");
 
-            fields(table, target, str -> target = str);
+            field(table, target, str -> target = str);
 
             row(table);
 
@@ -101,7 +100,7 @@ public class LStatements{
 
             table.add(" to ");
 
-            fields(table, target, str -> target = str);
+            field(table, target, str -> target = str);
 
             row(table);
 
@@ -123,19 +122,6 @@ public class LStatements{
 
     @RegisterStatement("draw")
     public static class DrawStatement extends LStatement{
-        static final String[] aligns = {"center", "top", "bottom", "left", "right", "topLeft", "topRight", "bottomLeft", "bottomRight"};
-        //yes, boxing Integer is gross but this is easier to construct and Integers <128 don't allocate anyway
-        static final ObjectMap<String, Integer> nameToAlign = ObjectMap.of(
-        "center", Align.center,
-        "top", Align.top,
-        "bottom", Align.bottom,
-        "left", Align.left,
-        "right", Align.right,
-        "topLeft", Align.topLeft,
-        "topRight", Align.topRight,
-        "bottomLeft", Align.bottomLeft,
-        "bottomRight", Align.bottomRight
-        );
 
         public GraphicsType type = GraphicsType.clear;
         public String x = "0", y = "0", p1 = "0", p2 = "0", p3 = "0", p4 = "0";
@@ -165,7 +151,7 @@ public class LStatements{
                     }
 
                     if(type == GraphicsType.print){
-                        p1 = "bottomLeft";
+                        p1 = "@bottomLeft";
                     }
 
                     rebuild(table);
@@ -252,14 +238,11 @@ public class LStatements{
 
                         row(s);
 
-                        s.add("align ");
-
-                        s.button(b -> {
-                            b.label(() -> nameToAlign.containsKey(p1) ? p1 : "bottomLeft");
-                            b.clicked(() -> showSelect(b, aligns, p1, t -> {
-                                p1 = t;
-                            }, 2, cell -> cell.size(165, 50)));
-                        }, Styles.logict, () -> {}).size(165, 40).color(s.color).left().padLeft(2);
+                        fields(s, "align", p1, v -> p1 = v).width(170f);
+                        fieldAlignSelect(s, () -> p1, v -> {
+                            p1 = v;
+                            rebuild(table);
+                        }, true, true);
                     }
                     case translate, scale -> {
                         fields(s, "x", x, v -> x = v);
@@ -278,12 +261,15 @@ public class LStatements{
             if(type == GraphicsType.color && p2.equals("0")){
                 p2 = "255";
             }
+
+            if(type == GraphicsType.print && nameToAlign.get(p1) != null){
+                p1 = "@" + p1;
+            }
         }
 
         @Override
         public LInstruction build(LAssembler builder){
-            return new DrawI((byte)type.ordinal(), builder.var(x), builder.var(y),
-                type == GraphicsType.print ? new LVar(p1, nameToAlign.get(p1, Align.bottomLeft), true) : builder.var(p1), builder.var(p2), builder.var(p3), builder.var(p4));
+            return new DrawI((byte)type.ordinal(), builder.var(x), builder.var(y), builder.var(p1), builder.var(p2), builder.var(p3), builder.var(p4));
         }
 
         @Override
@@ -793,6 +779,57 @@ public class LStatements{
         }
     }
 
+    @RegisterStatement("select")
+    public static class SelectStatement extends LStatement{
+        public String result = "result";
+        public ConditionOp op = ConditionOp.notEqual;
+        public String comp0 = "x", comp1 = "false", a = "a", b = "b";
+
+        @Override
+        public void build(Table table){
+            rebuild(table);
+        }
+
+        private void rebuild(Table table){
+            table.clearChildren();
+            table.left();
+
+            table.table(t -> {
+                t.setColor(table.color);
+
+                field(t, result, str -> result = str);
+                t.add(" = if ");
+
+                row(t);
+
+                JumpStatement.addOp(this, t, op, o -> {
+                    op = o;
+                    rebuild(table);
+                }, comp0, str -> comp0 = str, comp1, str -> comp1 = str);
+            }).left();
+
+            table.row();
+            table.table(t -> {
+                t.setColor(table.color);
+
+                t.add("then ");
+                field(t, a, str -> a = str).width(130f);
+                t.add(" else ");
+                field(t, b, str -> b = str).width(130f);
+            }).left();
+        }
+
+        @Override
+        public LInstruction build(LAssembler builder){
+            return new SelectI(op, builder.var(result), builder.var(comp0), builder.var(comp1), builder.var(a), builder.var(b));
+        }
+
+        @Override
+        public LCategory category(){
+            return LCategory.operation;
+        }
+    }
+
     @RegisterStatement("wait")
     public static class WaitStatement extends LStatement{
         public String value = "0.5";
@@ -897,6 +934,35 @@ public class LStatements{
         }
     }
 
+    @RegisterStatement("unpackcolor")
+    public static class UnpackColorStatement extends LStatement{
+        public String r = "r", g = "g", b = "b", a = "a", value = "color";
+
+        @Override
+        public void build(Table table){
+            fields(table, r, str -> r = str);
+            fields(table, g, str -> g = str);
+            fields(table, b, str -> b = str);
+            fields(table, a, str -> a = str);
+
+            row(table);
+
+            table.add(" = unpack ");
+
+            fields(table, value, str -> value = str);
+        }
+
+        @Override
+        public LInstruction build(LAssembler builder){
+            return new UnpackColorI(builder.var(r), builder.var(g), builder.var(b), builder.var(a), builder.var(value));
+        }
+
+        @Override
+        public LCategory category(){
+            return LCategory.operation;
+        }
+    }
+
     @RegisterStatement("end")
     public static class EndStatement extends LStatement{
         @Override
@@ -955,17 +1021,22 @@ public class LStatements{
             table.clearChildren();
             table.setColor(last);
 
-            if(op != ConditionOp.always) field(table, value, str -> value = str);
+            addOp(this, table, op, o -> {
+                op = o;
+                rebuild(table);
+            }, value, str -> value = str, compare, str -> compare = str);
+        }
 
-            table.button(b -> {
-                b.label(() -> op.symbol);
-                b.clicked(() -> showSelect(b, ConditionOp.all, op, o -> {
-                    op = o;
-                    rebuild(table);
-                }));
-            }, Styles.logict, () -> {}).size(op == ConditionOp.always ? 80f : 48f, 40f).pad(4f).color(table.color);
+        public static void addOp(LStatement st, Table t, ConditionOp op, Cons<ConditionOp> getter, String comp0, Cons<String> set0, String comp1, Cons<String> set2){
+            if(op != ConditionOp.always) st.field(t, comp0, set0);
 
-            if(op != ConditionOp.always) field(table, compare, str -> compare = str);
+            t.button(b -> {
+                b.add(op.symbol);
+                b.clicked(() -> st.showSelect(b, ConditionOp.all, op, getter));
+            }, Styles.logict, () -> {
+            }).size(op == ConditionOp.always ? 80f : 48f, 40f).pad(4f).color(t.color);
+
+            if(op != ConditionOp.always) st.field(t, comp1, set2);
         }
 
         //elements need separate conversion logic
@@ -1056,12 +1127,12 @@ public class LStatements{
 
             table.button(b -> {
                 b.label(() -> type.name());
-                b.clicked(() -> showSelect(b, LUnitControl.all, type, t -> {
-                    if(t == LUnitControl.build && !Vars.state.rules.logicUnitBuild){
-                        Vars.ui.showInfo("@logic.nounitbuild");
-                    }else{
-                        type = t;
-                    }
+                b.clicked(() -> showSelect(b, Structs.filter(LUnitControl.class, LUnitControl.all, t ->
+                    t == LUnitControl.build ? state.rules.logicUnitBuild :
+                    t == LUnitControl.deconstruct ? state.rules.logicUnitDeconstruct :
+                    true
+                ), type, t -> {
+                    type = t;
                     rebuild(table);
                 }, 2, cell -> cell.size(120, 50)));
             }, Styles.logict, () -> {}).size(120, 40).color(table.color).left().padLeft(2);
@@ -1227,6 +1298,62 @@ public class LStatements{
         }
     }
 
+    @RegisterStatement("query")
+    public static class QueryStatement extends LStatement{
+        public QueryShape shape = QueryShape.circle;
+        public QueryType type = QueryType.unit;
+        public String team = "null", x = "0", y = "0", w = "10", h = "10";
+
+        @Override
+        public void build(Table table){
+            table.clearChildren();
+
+            table.button(shape == QueryShape.circle ? "circle" : "rect", Styles.logict, () -> {
+                shape = shape == QueryShape.circle ? QueryShape.rect : QueryShape.circle;
+                build(table);
+            }).size(80f, 40f).pad(4f).color(table.color);
+
+            table.button(b -> {
+                b.label(() -> type.name());
+                b.clicked(() -> showSelect(b, QueryType.queryable, type, o -> {
+                    type = o;
+                    build(table);
+                }));
+            }, Styles.logict, () -> {}).size(64f, 40f).pad(4f).color(table.color);
+
+            fields(table, "team", team, str -> team = str);
+
+            row(table);
+
+            fields(table, "x", x, str -> x = str);
+            fields(table, "y", y, str -> y = str);
+
+            table.row();
+
+            if(shape == QueryShape.circle){
+                fields(table, "radius", w, str -> w = str);
+            }else{
+                fields(table, "width", w, str -> w = str);
+                fields(table, "height", h, str -> h = str);
+            }
+        }
+
+        @Override
+        public boolean privileged(){
+            return true;
+        }
+
+        @Override
+        public LInstruction build(LAssembler builder){
+            return new QueryI(shape, type, builder.var(team), builder.var(x), builder.var(y), builder.var(w), builder.var(h));
+        }
+
+        @Override
+        public LCategory category(){
+            return LCategory.world;
+        }
+    }
+
     @RegisterStatement("getblock")
     public static class GetBlockStatement extends LStatement{
         public TileLayer layer = TileLayer.block;
@@ -1379,6 +1506,57 @@ public class LStatements{
         }
     }
 
+    @RegisterStatement("bullet")
+    public static class SpawnBulletStatement extends LStatement{
+        public String result = "result", from = "@dagger", index = "0", x = "x", y = "y", rotation = "angle", team = "null", owner = "null", damage = "-1", velocityScl = "1", lifeScl = "1", aimX = "-1", aimY = "-1";
+
+        @Override
+        public void build(Table table){
+            fields(table, result, str -> result = str);
+
+            table.add(" = bullet ");
+
+            row(table);
+
+            fields(table, "from", from, str -> from = str);
+            fields(table, "index", index, str -> index = str);
+            row(table);
+            fields(table, "x", x, str -> x = str);
+            fields(table, "y", y, str -> y = str);
+            table.row();
+            fields(table, "rotation", rotation, str -> rotation = str);
+            fields(table, "team", team, str -> team = str);
+            row(table);
+            fields(table, "owner", owner, str -> owner = str);
+            fields(table, "damage", damage, str -> damage = str);
+            table.row();
+            fields(table, "velocityScl", velocityScl, str -> velocityScl = str);
+            fields(table, "lifeScl", lifeScl, str -> lifeScl = str);
+            row(table);
+            fields(table, "aimX", aimX, str -> aimX = str);
+            fields(table, "aimY", aimY, str -> aimY = str);
+        }
+
+        @Override
+        public boolean privileged(){
+            return true;
+        }
+
+        @Override
+        public LInstruction build(LAssembler builder){
+            return new SpawnBulletI(
+                builder.var(result), builder.var(from), builder.var(index), builder.var(x), builder.var(y), builder.var(rotation),
+                builder.var(team), builder.var(owner), builder.var(damage), builder.var(velocityScl), builder.var(lifeScl),
+                builder.var(aimX), builder.var(aimY)
+            );
+        }
+
+        @Override
+        public LCategory category(){
+            return LCategory.world;
+        }
+    }
+
     @RegisterStatement("status")
     public static class ApplyStatusStatement extends LStatement{
         public boolean clear;
@@ -1396,7 +1574,7 @@ public class LStatements{
             }).size(80f, 40f).pad(4f).color(table.color);
 
             if(statusNames == null){
-                statusNames = content.statusEffects().select(s -> !s.isHidden()).map(s -> s.name).toArray(String.class);
+                statusNames = content.statusEffects().map(s -> s.name).toArray(String.class);
             }
 
             table.button(b -> {
@@ -1605,6 +1783,8 @@ public class LStatements{
                 case mapArea -> {
                     table.add(" = ");
 
+                    row(table);
+
                     fields(table, "x", p1, s -> p1 = s);
                     fields(table, "y", p2, s -> p2 = s);
                     row(table);
@@ -1624,7 +1804,7 @@ public class LStatements{
                 case ban, unban -> {
                     table.add(" block/unit ");
 
-                    field(table, value, s -> value = s);
+                    fields(table, value, s -> value = s);
                 }
                 default -> {
                     table.add(" = ");
@@ -2186,19 +2366,15 @@ public class LStatements{
     @RegisterStatement("playsound")
     public static class PlaySoundStatement extends LStatement{
         public boolean positional;
-        public String id = "@sfx-pew", volume = "1", pitch = "1", pan = "0", x = "@thisx", y = "@thisy", limit = "true";
+        public String id = "@sfx-shoot", volume = "1", pitch = "1", pan = "0", x = "@thisx", y = "@thisy", limit = "true";
 
         @Override
         public void build(Table table){
-            rebuild(table);
-        }
-
-        void rebuild(Table table){
             table.clearChildren();
 
             table.button(positional ? "positional" : "global", Styles.logict, () -> {
                 positional = !positional;
-                rebuild(table);
+                build(table);
             }).size(160f, 40f).pad(4f).color(table.color);
 
             row(table);
@@ -2211,7 +2387,7 @@ public class LStatements{
                 String soundName = id.startsWith("@sfx-") ? id.substring(5) : id;
                 b.clicked(() -> showSelect(b, GlobalVars.soundNames.toArray(String.class), soundName, t -> {
                     id = "@sfx-" + t;
-                    rebuild(table);
+                    build(table);
                 }, 2, cell -> cell.size(160, 50)));
             }, Styles.logict, () -> {}).size(40).color(table.color).left().padLeft(-1);
 
@@ -2243,6 +2419,35 @@ public class LStatements{
         @Override
         public LInstruction build(LAssembler builder){
             return new PlaySoundI(positional, builder.var(id), builder.var(volume), builder.var(pitch), builder.var(pan), builder.var(x), builder.var(y), builder.var(limit));
+        }
+
+        @Override
+        public LCategory category(){
+            return LCategory.world;
+        }
+    }
+
+    @RegisterStatement("playmusic")
+    public static class PlayMusicStatement extends LStatement{
+        public String name = "\"game1\"", interrupt = "true";
+
+        @Override
+        public void build(Table table){
+            float width = LCanvas.useRows() ? 100f : 190f;
+
+            fields(table, "music", name, str -> name = str).width(width);
+
+            fields(table, "interrupt", interrupt, str -> interrupt = str).width(width);
+        }
+
+        @Override
+        public boolean privileged(){
+            return true;
+        }
+
+        @Override
+        public LInstruction build(LAssembler builder){
+            return new PlayMusicI(builder.var(name), builder.var(interrupt));
         }
 
         @Override
@@ -2314,6 +2519,11 @@ public class LStatements{
                                 }).width(240f).left();
                             }));
                         }, Styles.logict, () -> {}).size(40f).padLeft(-11).color(table.color);
+                    }else if(type == LMarkerControl.textAlign || type == LMarkerControl.lineAlign){
+                        fieldAlignSelect(t, () -> p1, v -> {
+                            p1 = v;
+                            rebuild(table);
+                        }, true, type != LMarkerControl.lineAlign);
                     }
                 });
 

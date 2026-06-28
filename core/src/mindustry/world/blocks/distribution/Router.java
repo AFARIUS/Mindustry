@@ -22,6 +22,8 @@ public class Router extends Block{
         group = BlockGroup.transportation;
         unloadable = false;
         noUpdateDisabled = true;
+        drawCached = true;
+        drawDynamic = false;
     }
 
     public class RouterBuild extends Building implements ControlBlock{
@@ -83,7 +85,7 @@ public class Router extends Block{
             items.add(item, 1);
             lastItem = item;
             time = 0f;
-            lastInput = source.tile();
+            lastInput = source.tile;
         }
 
         @Override
@@ -98,7 +100,7 @@ public class Router extends Block{
         public Building getTileTarget(Item item, Tile from, boolean set){
             if(unit != null && isControlled()){
                 unit.health(health);
-                unit.ammo(unit.type().ammoCapacity * (items.total() > 0 ? 1f : 0f));
+                unit.ammo((items.total() > 0 ? 1f : 0f));
                 unit.team(team);
                 unit.set(x, y);
 

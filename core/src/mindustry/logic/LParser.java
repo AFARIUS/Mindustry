@@ -37,17 +37,22 @@ public class LParser{
 
     String string(){
         int from = pos;
+        int utflen = 0;
 
         while(++pos < chars.length){
-            var c = chars[pos];
+            char c = chars[pos];
             if(c == '\n'){
                 error("Missing closing quote \" before end of line.");
             }else if(c == '"'){
                 break;
             }
+
+            // See ByteBufferOutput.writeUTF()
+            utflen += c != 0 && c <= 0x7F ? 1 : c <= 0x7FF ? 2 : 3;
         }
 
         if(pos >= chars.length || chars[pos] != '"') error("Missing closing quote \" before end of file.");
+        if(utflen > 65535) error("String value too long.");
 
         return new String(chars, from, ++pos - from);
     }
@@ -113,7 +118,11 @@ public class LParser{
                 if(jumpLocations.size >= maxJumps){
                     error("Too many jump locations. Max jumps: " + maxJumps);
                 }
-                jumpLocations.put(tokens[0].substring(0, tokens[0].length() - 1), line);
+                String label = tokens[0].substring(0, tokens[0].length() - 1);
+                if(jumpLocations.containsKey(label)){
+                    error("Jump label already defined: \"" + label + "\".");
+                }
+                jumpLocations.put(label, line);
             }else{
                 boolean wasJump;
                 String jumpLoc = null;
@@ -152,7 +161,13 @@ public class LParser{
                 }else{
                     //attempt parsing using custom parser if a match is found; this is for mods
                     if(LAssembler.customParsers.containsKey(tokens[0])){
-                        statements.add(LAssembler.customParsers.get(tokens[0]).get(tokens));
+                        var parsed = LAssembler.customParsers.get(tokens[0]).get(tokens);
+
+                        if(!privileged && parsed != null && parsed.privileged()){
+                            statements.add(new InvalidStatement());
+                        }else{
+                            statements.add(parsed);
+                        }
                     }else{
                         //unparseable statement
                         statements.add(new InvalidStatement());
